@@ -10,4 +10,5 @@ mammoth>=1.5.1
 docx2pdf>=0.1.8
 python-docx-replace>=1.1.0
 PyMuPDF>=1.18.19
+moviepy
 pdf2docx>=0.5.6
