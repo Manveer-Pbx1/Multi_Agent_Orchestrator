@@ -13,3 +13,4 @@ PyMuPDF>=1.18.19
 pdf2docx>=0.5.6
 librosa
 sounddevice
+transformers
