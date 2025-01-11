@@ -8,7 +8,7 @@ load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-
+#SERPER_API_KEY=2fdb52d81ddbb785cc764c014766df9a871c9652
 def fetch_webpage_content(url):
     """
     Fetch and parse webpage content
