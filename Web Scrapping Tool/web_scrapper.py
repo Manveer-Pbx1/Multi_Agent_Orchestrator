@@ -1,88 +1,144 @@
 import streamlit as st
 import requests
-import json
+import openai
 import os
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-
 load_dotenv()
 
-st.title("Web Scraping & Web Search Tool")
+openai.api_key = os.getenv("OPENAI_API_KEY")
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
-# Tabs for functionality
-tab1, tab2 = st.tabs(["Scrape Data", "Web Search"])
+def fetch_webpage_content(url):
+    """
+    Fetch and parse webpage content
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        st.error(f"Error fetching webpage content: {e}")
+        return None
 
-# Tab 1: Scrape Data
-with tab1:
-    # User inputs
-    webpage_url = st.text_input(
-        "Enter webpage URL:", 
-        "https://www.amazon.in/s?k=gaming+controller+for+pc+wired&crid=Z8HELQ4IDU2D&sprefix=gaming+controller+for+pc+wir%2Caps%2C264&ref=nb_sb_noss_2"
-    )
-    api_method_name = st.text_input("Enter API method name:", "getItemDetails")
+def extract_relevant_content(html_content, user_query):
+    """
+    Extract relevant content from HTML based on user query
+    """
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+        # Extract text content from the webpage
+        text_content = soup.get_text(separator=' ', strip=True)
+        return text_content
+    except Exception as e:
+        st.error(f"Error extracting content from HTML: {e}")
+        return None
 
-    # Create dynamic fields for response structure
-    st.subheader("Define Response Structure")
-    response_structure = {}
-    num_fields = st.number_input("Number of fields", min_value=1, value=5)
+def analyze_content_with_llm(content, user_query):
+    """
+    Use GPT to analyze extracted content based on user's query
+    """
+    try:
+        truncated_content = truncate_content(content)
+        llm_response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts specific information from web content based on user queries. The content might be truncated, so focus on the available information."},
+                {"role": "user", "content": f"From this webpage content: {truncated_content}\n\nUser wants to know: {user_query}\n\nPlease extract and summarize the relevant information. If the content appears truncated, mention that in your response."}
+            ],
+            max_tokens=None,
+        )
+        return llm_response["choices"][0]["message"]["content"]
+    except openai.error.RateLimitError:
+        return "Error: The webpage content is too large to process. Please try a smaller webpage or a more specific section."
+    except Exception as e:
+        return f"Error processing request: {e}"
 
-    for i in range(num_fields):
-        col1, col2 = st.columns(2)
-        with col1:
-            key = st.text_input(f"Field {i+1} name", key=f"key_{i}")
-        with col2:
-            value = st.text_input(f"Field {i+1} description", key=f"value_{i}", placeholder="<description>")
-        if key and value:
-            response_structure[key] = value
+def truncate_content(content, max_chars=100000):
+    """
+    Truncate content to a reasonable size while keeping meaningful content
+    """
+    if len(content) > max_chars:
+        print(content[:max_chars] + "... (content truncated)")
+        return content[:max_chars] + "... (content truncated)"
+    return content
 
-    if st.button("Scrape Data"):
-        url = "https://instantapi.ai/api/retrieve/"
+def search_with_serper(query):
+    """
+    Perform a search using Serper API
+    """
+    try:
+        url = "https://google.serper.dev/search"
         headers = {
-            "Content-Type": "application/json"
+            'X-API-KEY': SERPER_API_KEY,
+            'Content-Type': 'application/json'
         }
-        data = {
-            "webpage_url": webpage_url,
-            "api_method_name": api_method_name,
-            "api_response_structure": json.dumps(response_structure),
-            "api_key": os.getenv("INSTANTAPI_KEY")
+        payload = {
+            'q': query,
+            'num': 5  # Number of results to return
         }
+        
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Error performing search: {e}")
+        return None
 
-        with st.spinner("Fetching data..."):
-            try:
-                response = requests.post(url, headers=headers, json=data)
-                if response.status_code == 200:
-                    st.success("Data fetched successfully!")
-                    st.json(response.json())
-                else:
-                    st.error(f"Error: {response.status_code}")
-                    st.text(response.text)
-            except Exception as e:
-                st.error(f"Error occurred: {str(e)}")
+def display_search_results(results):
+    """
+    Display search results in a formatted way
+    """
+    if not results or 'organic' not in results:
+        st.error("No results found")
+        return
 
-# Tab 2: Web Search with DuckDuckGo
-with tab2:
-    st.subheader("Web Search Tool (DuckDuckGo)")
-    search_query = st.text_input("Enter your search query:", "Python web search library")
+    for result in results['organic']:
+        st.write("---")
+        st.write(f"### [{result['title']}]({result['link']})")
+        st.write(result['snippet'])
+        st.write(f"URL: {result['link']}")
 
-    if st.button("Search DuckDuckGo"):
-        with st.spinner("Searching..."):
-            try:
-                # Call DuckDuckGo API
-                url = f"https://api.duckduckgo.com/?q={search_query}&format=json"
-                response = requests.get(url)
-                if response.status_code == 200:
-                    data = response.json()
-                    related_topics = data.get("RelatedTopics", [])
-                    
-                    if related_topics:
-                        st.success("Search results:")
-                        for i, topic in enumerate(related_topics):
-                            if "Text" in topic and "FirstURL" in topic:
-                                st.write(f"{i+1}. [{topic['Text']}]({topic['FirstURL']})")
-                            elif "Name" in topic:
-                                st.write(f"{i+1}. {topic['Name']}")
-                    else:
-                        st.info("No results found.")
-                else:
-                    st.error(f"Error: {response.status_code}")
-            except Exception as e:
-                st.error(f"Error occurred: {str(e)}")
+def main():
+    st.title("Web Content Analysis Tools")
+    
+    # Create tabs
+    tab1, tab2 = st.tabs(["Web Scraper", "Search Tool"])
+    
+    # Web Scraper Tab
+    with tab1:
+        st.header("Smart Web Content Extractor")
+        url = st.text_input("Enter the URL of the webpage:")
+        user_query = st.text_area("What information would you like to extract from this webpage?")
+
+        if st.button("Extract Information"):
+            if not url or not user_query:
+                st.error("Please provide both the URL and your query.")
+                return
+
+            with st.spinner("Fetching and analyzing webpage content..."):
+                html_content = fetch_webpage_content(url)
+                if html_content:
+                    text_content = extract_relevant_content(html_content, user_query)
+                    if text_content:
+                        result = analyze_content_with_llm(text_content, user_query)
+                        st.write("### Results")
+                        st.write(result)
+    
+    # Search Tool Tab
+    with tab2:
+        st.header("Web Search Tool")
+        search_query = st.text_input("Enter your search query:")
+        
+        if st.button("Search"):
+            if not search_query:
+                st.error("Please enter a search query.")
+                return
+            
+            with st.spinner("Searching..."):
+                search_results = search_with_serper(search_query)
+                if search_results:
+                    display_search_results(search_results)
+
+if __name__ == "__main__":
+    main()
