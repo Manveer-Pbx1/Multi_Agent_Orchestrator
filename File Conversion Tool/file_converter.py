@@ -186,70 +186,123 @@ uploaded_file = st.sidebar.file_uploader("Choose a file",
     type=['pdf', 'docx', 'xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv'])
 
 if uploaded_file is not None:
-    file_extension = uploaded_file.name.split('.')[-1].lower()
-    st.sidebar.write("Convert to:")
-    
-    if file_extension in ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv']:
-        video_formats = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv']
-        video_formats.remove(file_extension if file_extension in video_formats else video_formats[0])
-        target_format = st.sidebar.selectbox("Select format", video_formats)
-    elif file_extension == 'pdf':
-        target_format = st.sidebar.selectbox("Select format", ['docx'])
-    elif file_extension == 'docx':
-        target_format = st.sidebar.selectbox("Select format", ['pdf'])
-    elif file_extension in ['xlsx', 'xls']:
-        target_format = st.sidebar.selectbox("Select format", ['csv'])
-    elif file_extension == 'csv':
-        target_format = st.sidebar.selectbox("Select format", ['xlsx'])
-    elif file_extension in ['png', 'jpg', 'jpeg']:
-        target_format = st.sidebar.selectbox("Select format", ['txt'])
-
-    if st.sidebar.button("Convert"):
-        with st.spinner("Converting..."):
-            try:
-                file_bytes = uploaded_file.read()
-                
-                if file_extension in ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv']:
-                    converted_bytes = convert_video_bytes(file_bytes, target_format)
-                    output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.{target_format}"
-                    mime_type = f"video/{target_format}"
-                
-                elif file_extension in ['png', 'jpg', 'jpeg'] and target_format == 'txt':
-                    converted_bytes = convert_image_to_text(file_bytes)
-                    output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.txt"
-                    mime_type = "text/plain"
-                
-                elif file_extension == 'pdf' and target_format == 'docx':
-                    converted_bytes = convert_pdf_to_docx(file_bytes)
-                    output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.docx"
-                    mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                
-                elif file_extension == 'docx' and target_format == 'pdf':
-                    converted_bytes = convert_docx_to_pdf(file_bytes)
-                    output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.pdf"
-                    mime_type = "application/pdf"
-                    time.sleep(1)
-                
-                elif file_extension in ['xlsx', 'xls'] and target_format == 'csv':
-                    converted_bytes = convert_excel_to_csv(file_bytes)
-                    output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.csv"
-                    mime_type = "text/csv"
-                
-                elif file_extension == 'csv' and target_format == 'xlsx':
-                    converted_bytes = convert_csv_to_excel(file_bytes)
-                    output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.xlsx"
-                    mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-                st.success("Conversion completed!")
-                st.download_button(
-                    label="Download converted file",
-                    data=converted_bytes,
-                    file_name=output_filename,
-                    mime=mime_type
-                )
+    try:
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        file_size = uploaded_file.size
+        
+        if file_size > 200 * 1024 * 1024:  
+            st.error("File size too large. Please upload a file smaller than 200MB.")
+            st.stop()
             
-            except Exception as e:
-                st.error(f"An error occurred during conversion: {str(e)}")
+        allowed_extensions = ['pdf', 'docx', 'xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 
+                            'mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv']
+        if file_extension not in allowed_extensions:
+            st.error(f"Unsupported file format. Allowed formats: {', '.join(allowed_extensions)}")
+            st.stop()
+
+        st.sidebar.write("Convert to:")
+        
+        if file_extension in ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv']:
+            video_formats = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv']
+            video_formats.remove(file_extension if file_extension in video_formats else video_formats[0])
+            target_format = st.sidebar.selectbox("Select format", video_formats)
+        elif file_extension == 'pdf':
+            target_format = st.sidebar.selectbox("Select format", ['docx'])
+        elif file_extension == 'docx':
+            target_format = st.sidebar.selectbox("Select format", ['pdf'])
+        elif file_extension in ['xlsx', 'xls']:
+            target_format = st.sidebar.selectbox("Select format", ['csv'])
+        elif file_extension == 'csv':
+            target_format = st.sidebar.selectbox("Select format", ['xlsx'])
+        elif file_extension in ['png', 'jpg', 'jpeg']:
+            target_format = st.sidebar.selectbox("Select format", ['txt'])
+
+        if st.sidebar.button("Convert"):
+            with st.spinner("Converting..."):
+                try:
+                    file_bytes = uploaded_file.read()
+                    
+                    if len(file_bytes) == 0:
+                        st.error("The uploaded file is empty.")
+                        st.stop()
+                    
+                    if file_extension in ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv']:
+                        try:
+                            converted_bytes = convert_video_bytes(file_bytes, target_format)
+                            output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.{target_format}"
+                            mime_type = f"video/{target_format}"
+                        except Exception as e:
+                            st.error(f"Error during video conversion: {str(e)}")
+                            st.stop()
+                    
+                    elif file_extension in ['png', 'jpg', 'jpeg'] and target_format == 'txt':
+                        try:
+                            converted_bytes = convert_image_to_text(file_bytes)
+                            if not converted_bytes:
+                                st.error("No text could be extracted from the image.")
+                                st.stop()
+                            output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.txt"
+                            mime_type = "text/plain"
+                        except Exception as e:
+                            st.error(f"Error during image to text conversion: {str(e)}")
+                            st.stop()
+                    
+                    elif file_extension == 'pdf' and target_format == 'docx':
+                        try:
+                            converted_bytes = convert_pdf_to_docx(file_bytes)
+                            output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.docx"
+                            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        except Exception as e:
+                            st.error(f"Error during PDF to DOCX conversion: {str(e)}")
+                            st.stop()
+                    
+                    elif file_extension == 'docx' and target_format == 'pdf':
+                        try:
+                            converted_bytes = convert_docx_to_pdf(file_bytes)
+                            output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.pdf"
+                            mime_type = "application/pdf"
+                        except Exception as e:
+                            st.error(f"Error during DOCX to PDF conversion: {str(e)}")
+                            st.stop()
+                    
+                    elif file_extension in ['xlsx', 'xls'] and target_format == 'csv':
+                        try:
+                            converted_bytes = convert_excel_to_csv(file_bytes)
+                            output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.csv"
+                            mime_type = "text/csv"
+                        except Exception as e:
+                            st.error(f"Error during Excel to CSV conversion: {str(e)}")
+                            st.stop()
+                    
+                    elif file_extension == 'csv' and target_format == 'xlsx':
+                        try:
+                            converted_bytes = convert_csv_to_excel(file_bytes)
+                            output_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}.xlsx"
+                            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        except Exception as e:
+                            st.error(f"Error during CSV to Excel conversion: {str(e)}")
+                            st.stop()
+                    
+                    else:
+                        st.error("Unsupported conversion combination.")
+                        st.stop()
+
+                    if converted_bytes:
+                        st.success("Conversion completed!")
+                        st.download_button(
+                            label="Download converted file",
+                            data=converted_bytes,
+                            file_name=output_filename,
+                            mime=mime_type
+                        )
+                    else:
+                        st.error("Conversion failed: No output generated")
+
+                except Exception as e:
+                    st.error(f"An unexpected error occurred during conversion: {str(e)}")
+                    
+    except Exception as e:
+        st.error(f"An error occurred while processing the file: {str(e)}")
 
 else:
     st.info("Please upload a file to convert")

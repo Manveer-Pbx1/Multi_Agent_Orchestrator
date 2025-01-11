@@ -1,14 +1,15 @@
 import streamlit as st
 from transformers import pipeline
 
-# Load sentiment analysis pipeline from Hugging Face
-sentiment_pipeline = pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
+try:
+    sentiment_pipeline = pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
+except Exception as e:
+    st.error("Error loading the sentiment analysis model. Please try again later.")
+    st.stop()
 
-# Streamlit app
 st.title("Sentiment Analysis Tool")
 st.write("Enter text to analyze its sentiment (positive, neutral, negative).")
 
-# Text input
 user_input = st.text_area("Enter text here:")
 
 def convert_to_sentiment(star_rating):
@@ -21,14 +22,15 @@ def convert_to_sentiment(star_rating):
 
 if st.button("Analyze"):
     if user_input:
-        # Perform sentiment analysis
-        result = sentiment_pipeline(user_input)
-        star_rating = result[0]['label']
-        sentiment = convert_to_sentiment(star_rating)
-        score = result[0]['score']
-        
-        # Display result
-        st.write(f"Sentiment: {sentiment}")
-        st.write(f"Confidence Score: {score:.2f}")
+        try:
+            result = sentiment_pipeline(user_input)
+            star_rating = result[0]['label']
+            sentiment = convert_to_sentiment(star_rating)
+            score = result[0]['score']
+            
+            st.write(f"Sentiment: {sentiment}")
+            st.write(f"Confidence Score: {score:.2f}")
+        except Exception as e:
+            st.error(f"An error occurred during analysis. Please try with different text or try again later. Error: {str(e)}")
     else:
         st.write("Please enter some text to analyze.")

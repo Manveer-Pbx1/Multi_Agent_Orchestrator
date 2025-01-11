@@ -16,19 +16,49 @@ mode = st.sidebar.radio("Mode", ("Upload Audio File", "Real-Time Transcription")
 
 st.sidebar.write("OpenAI Configuration")
 api_key = st.sidebar.text_input("Enter OpenAI API Key", type="password")
-if api_key:
-    openai.api_key = api_key
 
-def transcribe_audio_file(audio_file):
+def validate_api_key(key):
+    if not key or len(key.strip()) < 10:  
+        return False
     try:
+        openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=1
+        )
+        return True
+    except Exception as e:
+        st.sidebar.error(f"Invalid API key: {str(e)}")
+        return False
+
+if api_key:
+    try:
+        if validate_api_key(api_key):
+            openai.api_key = api_key
+            st.sidebar.success("API key is valid!")
+        else:
+            st.sidebar.error("Invalid API key")
+    except Exception as e:
+        st.sidebar.error(f"Error validating API key: {str(e)}")
+
+def safe_transcribe_audio_file(audio_file):
+    if not api_key or not openai.api_key:
+        raise ValueError("API key not set or invalid")
+    
+    try:
+        if not audio_file or audio_file.size == 0:
+            raise ValueError("Invalid or empty audio file")
+        
+        if audio_file.size > 25 * 1024 * 1024:
+            raise ValueError("Audio file size exceeds 25MB limit")
+            
         response = openai.Audio.transcribe(
             "whisper-1",
             audio_file
         )
         return response["text"]
     except Exception as e:
-        st.error(f"Transcription error: {str(e)}")
-        return None
+        raise Exception(f"Transcription failed: {str(e)}")
 
 def analyze_text(text):
     if not api_key:
@@ -52,32 +82,40 @@ if mode == "Upload Audio File":
     st.header("Upload an Audio File")
     uploaded_file = st.file_uploader("Choose an audio file", type=["mp3", "wav", "m4a"])
 
-    if uploaded_file is not None and api_key:
+    if uploaded_file is not None:
         try:
-            st.audio(uploaded_file)
-            st.write("Starting transcription...")
-            
-            transcript = transcribe_audio_file(uploaded_file)
-            
-            if transcript:
-                st.subheader("Transcription:")
-                st.write(transcript)
-                
-                if api_key:
-                    st.subheader("Analysis:")
-                    analysis = analyze_text(transcript)
-                    if analysis:
-                        st.write(analysis)
-                
-                st.download_button(
-                    label="Download Transcription as TXT",
-                    data=transcript,
-                    file_name="transcription.txt",
-                    mime="text/plain",
-                )
+            if not api_key:
+                st.warning("Please enter a valid OpenAI API key first.")
+            else:
+                # Validate file type
+                file_type = uploaded_file.type
+                if file_type not in ["audio/mp3", "audio/wav", "audio/x-m4a"]:
+                    st.error(f"Unsupported file type: {file_type}")
+                else:
+                    st.audio(uploaded_file)
+                    with st.spinner("Starting transcription..."):
+                        transcript = safe_transcribe_audio_file(uploaded_file)
+                        
+                        if transcript:
+                            st.subheader("Transcription:")
+                            st.write(transcript)
+                            
+                            if api_key:
+                                st.subheader("Analysis:")
+                                analysis = analyze_text(transcript)
+                                if analysis:
+                                    st.write(analysis)
+                            
+                            st.download_button(
+                                label="Download Transcription as TXT",
+                                data=transcript,
+                                file_name="transcription.txt",
+                                mime="text/plain",
+                            )
+        except ValueError as ve:
+            st.error(f"Validation Error: {str(ve)}")
         except Exception as e:
-            st.error(f"Error: {str(e)}")
-            st.write(f"Full error details: {repr(e)}")
+            st.error(f"Processing Error: {str(e)}")
     elif not api_key:
         st.warning("Please enter your OpenAI API key in the sidebar to enable transcription.")
 
@@ -102,12 +140,22 @@ elif mode == "Real-Time Transcription":
     CHANNELS = 1
     CHUNK_SIZE = 1024
     
-    def record_audio_continuous():
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=np.float32) as stream:
-            while st.session_state.recording:
-                audio_chunk, _ = stream.read(CHUNK_SIZE)
-                st.session_state.audio_chunks.append(audio_chunk)
-                time.sleep(0.01)  
+    def safe_record_audio_continuous():
+        try:
+            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=np.float32) as stream:
+                while st.session_state.recording:
+                    try:
+                        audio_chunk, _ = stream.read(CHUNK_SIZE)
+                        st.session_state.audio_chunks.append(audio_chunk)
+                        time.sleep(0.01)
+                    except Exception as e:
+                        st.error(f"Recording error: {str(e)}")
+                        st.session_state.recording = False
+                        break
+        except Exception as e:
+            st.error(f"Failed to initialize audio stream: {str(e)}")
+            st.session_state.recording = False
+
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -136,7 +184,7 @@ elif mode == "Real-Time Transcription":
     
     if st.session_state.recording:
         st.warning("Recording in progress... Press 'Stop Recording' when finished.")
-        record_audio_continuous()
+        safe_record_audio_continuous()
     elif st.session_state.audio_data is not None and not st.session_state.processed:
         st.info("Recording complete. Click 'Process Recording' to transcribe.")
 
@@ -144,20 +192,24 @@ elif mode == "Real-Time Transcription":
         try:
             audio_data = st.session_state.audio_data.flatten()
             
+            if len(audio_data) == 0:
+                raise ValueError("No audio data recorded")
+            
             st.subheader("Audio Waveform:")
             st.line_chart(audio_data[:1000])
             
             st.info("Transcribing audio...")
             
-            # Save audio to temporary file and transcribe
             temp_path = "temp_recording.wav"
-            import soundfile as sf
-            sf.write(temp_path, audio_data, SAMPLE_RATE)
-            
-            with open(temp_path, "rb") as audio_file:
-                transcript = transcribe_audio_file(audio_file)
-            
-            os.remove(temp_path)
+            try:
+                import soundfile as sf
+                sf.write(temp_path, audio_data, SAMPLE_RATE)
+                
+                with open(temp_path, "rb") as audio_file:
+                    transcript = safe_transcribe_audio_file(audio_file)
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
             
             if transcript:
                 st.subheader("Transcription:")
@@ -176,8 +228,10 @@ elif mode == "Real-Time Transcription":
                     mime="text/plain",
                 )
         
+        except ValueError as ve:
+            st.error(f"Validation Error: {str(ve)}")
         except Exception as e:
-            st.error(f"Error during processing: {str(e)}")
+            st.error(f"Processing Error: {str(e)}")
             st.error("Full error:", exc_info=True)
     elif not api_key:
         st.warning("Please enter your OpenAI API key in the sidebar to enable transcription.")
