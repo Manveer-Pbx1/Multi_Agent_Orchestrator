@@ -2,15 +2,10 @@ import streamlit as st
 import whisper
 import os
 from pathlib import Path
-from io import BytesIO
-import soundfile as sf
 import numpy as np
 import librosa
 import io
 import sounddevice as sd
-import tempfile
-import wave
-from scipy.io import wavfile
 import time
 
 st.title("Audio to Text Transcription App")
