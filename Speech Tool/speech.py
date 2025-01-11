@@ -1,5 +1,4 @@
 import streamlit as st
-import whisper
 import os
 from pathlib import Path
 import numpy as np
@@ -7,6 +6,7 @@ import librosa
 import io
 import sounddevice as sd
 import time
+import openai
 
 st.title("Audio to Text Transcription App")
 st.sidebar.title("Options")
@@ -14,62 +14,72 @@ st.sidebar.title("Options")
 st.sidebar.write("Select transcription mode:")
 mode = st.sidebar.radio("Mode", ("Upload Audio File", "Real-Time Transcription"))
 
-@st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("base")
+st.sidebar.write("OpenAI Configuration")
+api_key = st.sidebar.text_input("Enter OpenAI API Key", type="password")
+if api_key:
+    openai.api_key = api_key
 
-model = load_whisper_model()
-
-def transcribe_audio(audio_file_path):
+def transcribe_audio_file(audio_file):
     try:
-        audio_path = str(Path(audio_file_path).absolute())
-        if not os.path.exists(audio_path):
-            raise FileNotFoundError(f"The file does not exist: {audio_path}")
-        
-        result = model.transcribe(audio_path)
-        return result["text"]
+        response = openai.Audio.transcribe(
+            "whisper-1",
+            audio_file
+        )
+        return response["text"]
     except Exception as e:
         st.error(f"Transcription error: {str(e)}")
+        return None
+
+def analyze_text(text):
+    if not api_key:
+        st.warning("Please enter your OpenAI API key in the sidebar to enable analysis.")
+        return None
+    
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that analyzes transcribed text."},
+                {"role": "user", "content": f"Please analyze this text and provide a brief summary and key points:\n{text}"}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.error(f"Analysis error: {str(e)}")
         return None
 
 if mode == "Upload Audio File":
     st.header("Upload an Audio File")
     uploaded_file = st.file_uploader("Choose an audio file", type=["mp3", "wav", "m4a"])
 
-    if uploaded_file is not None:
+    if uploaded_file is not None and api_key:
         try:
-            audio_bytes = uploaded_file.read()
+            st.audio(uploaded_file)
+            st.write("Starting transcription...")
             
-            try:
-                audio_io = io.BytesIO(audio_bytes)
-                audio_array, sr = librosa.load(audio_io, sr=16000)
+            transcript = transcribe_audio_file(uploaded_file)
+            
+            if transcript:
+                st.subheader("Transcription:")
+                st.write(transcript)
                 
-                st.write("Debug - Audio array shape:", audio_array.shape)
-                st.write("Debug - Sample rate:", sr)
+                if api_key:
+                    st.subheader("Analysis:")
+                    analysis = analyze_text(transcript)
+                    if analysis:
+                        st.write(analysis)
                 
-                st.audio(audio_bytes)
-                
-                st.write("Starting transcription...")
-                transcript = model.transcribe(audio_array)
-                
-                if transcript and "text" in transcript:
-                    st.subheader("Transcription:")
-                    st.write(transcript["text"])
-                    
-                    st.download_button(
-                        label="Download Transcription as TXT",
-                        data=transcript["text"],
-                        file_name="transcription.txt",
-                        mime="text/plain",
-                    )
-            except Exception as e:
-                st.error(f"Audio processing error: {str(e)}")
-                st.write(f"Audio format: {uploaded_file.type}")
-                st.write(f"Audio size: {len(audio_bytes)} bytes")
-
+                st.download_button(
+                    label="Download Transcription as TXT",
+                    data=transcript,
+                    file_name="transcription.txt",
+                    mime="text/plain",
+                )
         except Exception as e:
             st.error(f"Error: {str(e)}")
             st.write(f"Full error details: {repr(e)}")
+    elif not api_key:
+        st.warning("Please enter your OpenAI API key in the sidebar to enable transcription.")
 
 elif mode == "Real-Time Transcription":
     st.header("Real-Time Voice Transcription")
@@ -130,7 +140,7 @@ elif mode == "Real-Time Transcription":
     elif st.session_state.audio_data is not None and not st.session_state.processed:
         st.info("Recording complete. Click 'Process Recording' to transcribe.")
 
-    if st.session_state.processed and st.session_state.audio_data is not None:
+    if st.session_state.processed and st.session_state.audio_data is not None and api_key:
         try:
             audio_data = st.session_state.audio_data.flatten()
             
@@ -138,15 +148,30 @@ elif mode == "Real-Time Transcription":
             st.line_chart(audio_data[:1000])
             
             st.info("Transcribing audio...")
-            transcript = model.transcribe(audio_data)
             
-            if transcript and "text" in transcript:
+            # Save audio to temporary file and transcribe
+            temp_path = "temp_recording.wav"
+            import soundfile as sf
+            sf.write(temp_path, audio_data, SAMPLE_RATE)
+            
+            with open(temp_path, "rb") as audio_file:
+                transcript = transcribe_audio_file(audio_file)
+            
+            os.remove(temp_path)
+            
+            if transcript:
                 st.subheader("Transcription:")
-                st.write(transcript["text"])
+                st.write(transcript)
+                
+                if api_key:
+                    st.subheader("Analysis:")
+                    analysis = analyze_text(transcript)
+                    if analysis:
+                        st.write(analysis)
                 
                 st.download_button(
                     label="Download Transcription as TXT",
-                    data=transcript["text"],
+                    data=transcript,
                     file_name="transcription.txt",
                     mime="text/plain",
                 )
@@ -154,3 +179,5 @@ elif mode == "Real-Time Transcription":
         except Exception as e:
             st.error(f"Error during processing: {str(e)}")
             st.error("Full error:", exc_info=True)
+    elif not api_key:
+        st.warning("Please enter your OpenAI API key in the sidebar to enable transcription.")
