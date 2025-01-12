@@ -14,8 +14,8 @@ st.sidebar.title("Options")
 st.sidebar.write("Select transcription mode:")
 mode = st.sidebar.radio("Mode", ("Upload Audio File", "Real-Time Transcription"))
 
-st.sidebar.write("OpenAI Configuration")
-api_key = st.sidebar.text_input("Enter OpenAI API Key", type="password")
+api_key = "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"
+openai.api_key = api_key
 
 def validate_api_key(key):
     if not key or len(key.strip()) < 10:  
@@ -31,25 +31,30 @@ def validate_api_key(key):
         st.sidebar.error(f"Invalid API key: {str(e)}")
         return False
 
-if api_key:
-    try:
-        if validate_api_key(api_key):
-            openai.api_key = api_key
-            st.sidebar.success("API key is valid!")
-        else:
-            st.sidebar.error("Invalid API key")
-    except Exception as e:
-        st.sidebar.error(f"Error validating API key: {str(e)}")
+# Remove the API key input from the sidebar
+# if api_key:
+#     try:
+#         if validate_api_key(api_key):
+#             openai.api_key = api_key
+#             st.sidebar.success("API key is valid!")
+#         else:
+#             st.sidebar.error("Invalid API key")
+#     except Exception as e:
+#         st.sidebar.error(f"Error validating API key: {str(e)}")
 
 def safe_transcribe_audio_file(audio_file):
     if not api_key or not openai.api_key:
         raise ValueError("API key not set or invalid")
     
     try:
-        if not audio_file or audio_file.size == 0:
+        audio_file.seek(0, os.SEEK_END)
+        file_size = audio_file.tell()
+        audio_file.seek(0, os.SEEK_SET)
+        
+        if file_size == 0:
             raise ValueError("Invalid or empty audio file")
         
-        if audio_file.size > 25 * 1024 * 1024:
+        if file_size > 25 * 1024 * 1024:
             raise ValueError("Audio file size exceeds 25MB limit")
             
         response = openai.Audio.transcribe(
@@ -87,9 +92,8 @@ if mode == "Upload Audio File":
             if not api_key:
                 st.warning("Please enter a valid OpenAI API key first.")
             else:
-                # Validate file type
                 file_type = uploaded_file.type
-                if file_type not in ["audio/mp3", "audio/wav", "audio/x-m4a"]:
+                if file_type not in ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-m4a"]:
                     st.error(f"Unsupported file type: {file_type}")
                 else:
                     st.audio(uploaded_file)
@@ -232,6 +236,5 @@ elif mode == "Real-Time Transcription":
             st.error(f"Validation Error: {str(ve)}")
         except Exception as e:
             st.error(f"Processing Error: {str(e)}")
-            st.error("Full error:", exc_info=True)
     elif not api_key:
         st.warning("Please enter your OpenAI API key in the sidebar to enable transcription.")
