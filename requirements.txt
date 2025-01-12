@@ -30,3 +30,7 @@ streamlit_mic_recorder
 streamlit-webrtc     
 transformers         
 wheel                
+selenium
+webdriver-manager
+gradio
+scrapegraphai
