@@ -14,12 +14,12 @@ load_dotenv()
 
 # Initialize clients with environment variables
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-hf_api_key = os.getenv('HUGGINGFACE_API_KEY')
+hf_api_key = os.getenv('HF_API_KEY')
 
 # Verify API keys are present
 if not os.getenv('OPENAI_API_KEY'):
     raise ValueError("OPENAI_API_KEY not found in environment variables")
-if not os.getenv('HUGGINGFACE_API_KEY'):
+if not os.getenv('HF_API_KEY'):
     raise ValueError("HUGGINGFACE_API_KEY not found in environment variables")
 
 # Streamlit app
