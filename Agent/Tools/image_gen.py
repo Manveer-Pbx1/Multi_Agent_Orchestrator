@@ -7,10 +7,20 @@ import io
 import os
 import requests
 from huggingface_hub import InferenceClient
+from dotenv import load_dotenv
 
-# Initialize OpenAI client
-client = OpenAI(api_key="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")
-hf_api_key = "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"
+# Load environment variables
+load_dotenv()
+
+# Initialize clients with environment variables
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+hf_api_key = os.getenv('HUGGINGFACE_API_KEY')
+
+# Verify API keys are present
+if not os.getenv('OPENAI_API_KEY'):
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+if not os.getenv('HUGGINGFACE_API_KEY'):
+    raise ValueError("HUGGINGFACE_API_KEY not found in environment variables")
 
 # Streamlit app
 

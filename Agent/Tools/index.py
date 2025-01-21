@@ -346,7 +346,7 @@ if __name__ == "__main__":
         scrape_params = {
             'url': args.url,
             'prompt': args.prompt,
-            'openai_api_key': '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'
+            'openai_api_key': os.getenv('OPENAI_API_KEY')
         }
         print(web_analysis_tool('scrape', scrape_params))
         
@@ -357,6 +357,6 @@ if __name__ == "__main__":
             
         search_params = {
             'query': args.prompt,
-            'serper_api_key': '2fdb52d81ddbb785cc764c014766df9a871c9652'
+            'serper_api_key': os.getenv('SERPER_API_KEY')
         }
         print(web_analysis_tool('search', search_params))
