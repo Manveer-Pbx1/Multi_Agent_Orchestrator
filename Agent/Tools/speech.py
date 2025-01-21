@@ -1,3 +1,4 @@
+import openai
 import streamlit as st
 import os
 from pathlib import Path
@@ -6,7 +7,35 @@ import librosa
 import io
 import sounddevice as sd
 import time
-import openai
+from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
+
+# Initialize the client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def transcribe_audio_file(audio_file):
+    """
+    Transcribe the given audio file using OpenAI's transcription service.
+    
+    Args:
+        audio_file (BytesIO or file-like): The audio file to transcribe.
+        
+    Returns:
+        str: The transcribed text.
+    """
+    try:
+        if not client.api_key:
+            raise ValueError("OpenAI API key not found in environment variables")
+            
+        # Create transcript
+        response = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file
+        )
+        return response.text
+    except Exception as e:
+        raise Exception(f"Transcription failed: {str(e)}")
 
 def launch_speech_app():
     st.title("Audio to Text Transcription App")
@@ -15,7 +44,7 @@ def launch_speech_app():
     st.sidebar.write("Select transcription mode:")
     mode = st.sidebar.radio("Mode", ("Upload Audio File", "Real-Time Transcription"))
 
-    api_key = "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"
+    api_key = os.getenv("OPENAI_API_KEY")
     openai.api_key = api_key
 
     def validate_api_key(key):

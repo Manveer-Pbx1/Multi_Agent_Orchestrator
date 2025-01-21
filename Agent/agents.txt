@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Image Generation Agent",
+    "description": "Specializes in tasks related to image creation",
+    "tools": [
+      "image_generator"
+    ]
+  },
+  {
+    "name": "Data Visualization Agent",
+    "description": "Specializes in visualizing data in a comprehensible and interactive manner",
+    "tools": [
+      "data_visualization"
+    ]
+  },
+  {
+    "name": "File Conversion Agent",
+    "description": "Specializes in converting files from one format to another",
+    "tools": [
+      "file_converter"
+    ]
+  },
+  {
+    "name": "Speech Recognition Agent",
+    "description": "Specializes in speech recognition and processing tasks",
+    "tools": [
+      "speech_processor"
+    ]
+  },
+  {
+    "name": "Web Analysis Agent",
+    "description": "Specializes in web searching and scrapping tasks",
+    "tools": [
+      "web_analyzer"
+    ]
+  },
+  {
+    "name": "Sentiment Analysis Agent",
+    "description": "Specializes in analyzing sentiments from texts",
+    "tools": [
+      "sentiment_analyzer"
+    ]
+  }
+]

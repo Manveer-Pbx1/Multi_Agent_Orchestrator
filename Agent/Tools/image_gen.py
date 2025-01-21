@@ -1,3 +1,4 @@
+from venv import logger
 import PIL
 import streamlit as st
 from openai import OpenAI
@@ -14,46 +15,95 @@ hf_api_key = "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"
 # Streamlit app
 
 def generate_image(prompt, size="1024x1024"):
+    """Generate an image using DALL-E"""
     try:
         response = client.images.generate(
-            model="dall-e-3",  # or "dall-e-2" depending on your needs
+            model="dall-e-3",
             prompt=prompt,
             n=1,
-            size=size
+            size=size,
+            quality="standard",
+            response_format="url"
         )
-        image_url = response.data[0].url
-        return image_url
+        
+        if hasattr(response, 'data') and len(response.data) > 0:
+            return {
+                "success": True,
+                "type": "image",
+                "url": response.data[0].url,
+                "content": "Image generated successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "type": "text",
+                "content": "Failed to generate image: No image data received"
+            }
+            
     except Exception as e:
-        return f"An unexpected error occurred: {str(e)}"
+        logger.error(f"DALL-E generation error: {str(e)}")
+        return {
+            "success": False,
+            "type": "text",
+            "content": f"Failed to generate image: {str(e)}"
+        }
 
 def generate_image_flux(prompt, size="1024x1024"):
+    """Generate an image using FLUX.1-Schnell model from HuggingFace"""
     try:
-        client = InferenceClient(token=hf_api_key)
         if not hf_api_key:
             return "HuggingFace API key is not configured"
             
+        client = InferenceClient(token=hf_api_key)
         width, height = map(int, size.split('x'))
         
         image_bytes = client.post(
-            model="black-forest-labs/FLUX.1-schnell",
+            model="stabilityai/stable-diffusion-xl-base-1.0",
             data={
                 "inputs": prompt,
                 "parameters": {
-                    "negative_prompt": "",
+                    "negative_prompt": "blurry, bad quality, distorted",
                     "width": width,
                     "height": height,
+                    "num_inference_steps": 30,
+                    "guidance_scale": 7.5,
                 }
             }
         )
         
-        buffered = io.BytesIO(image_bytes)
-        return buffered
-    except ValueError as e:
-        return f"Invalid size format: {str(e)}"
-    except requests.exceptions.RequestException as e:
-        return f"Network error: {str(e)}"
+        if isinstance(image_bytes, bytes):
+            # Save image bytes to a temporary file and get its URL
+            import tempfile
+            import os
+            
+            temp_dir = os.path.join(os.getcwd(), "temp_images")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir=temp_dir) as temp_file:
+                temp_file.write(image_bytes)
+                temp_file_path = temp_file.name
+                
+            # Convert file path to relative URL
+            relative_path = os.path.relpath(temp_file_path, os.getcwd())
+            url = f"file://{os.path.abspath(temp_file_path)}"
+            
+            return {
+                "success": True,
+                "type": "image",
+                "url": url,
+                "file_path": temp_file_path,  # Include file path for cleanup later
+                "content": "Image generated successfully with FLUX.1-Schnell"
+            }
+        else:
+            raise ValueError("Invalid response from image generation API")
+            
     except Exception as e:
-        return f"An unexpected error occurred: {str(e)}"
+        logger.error(f"Error in generate_image_flux: {str(e)}")
+        return {
+            "success": False,
+            "type": "text",
+            "content": f"Failed to generate image: {str(e)}"
+        }
 
 def edit_image(image_file, prompt, size="1024x1024"):
     try:
@@ -85,12 +135,28 @@ def edit_image(image_file, prompt, size="1024x1024"):
     except Exception as e:
         return f"An unexpected error occurred: {str(e)}"
 
-def _run(self, prompt, model="FLUX.1-Schnell"):
+# Remove the 'self' parameter since this is not a class method
+def _run(prompt, model="FLUX.1-Schnell"):
     """Main entry point for the tool"""
-    if model == "DALL-E":
-        return generate_image(prompt)
-    else:
-        return generate_image_flux(prompt)
+    try:
+        use_dalle = any(term in prompt.lower() for term in ["dall-e", "dalle", "dall e", "use dall"])
+        
+        if use_dalle:
+            result = generate_image(prompt)
+        else:
+            result = generate_image_flux(prompt)
+        
+        # Print the URL for debugging
+        if result.get("success") and "url" in result:
+            print(f"Generated image URL: {result['url']}")
+            
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "type": "text",
+            "content": f"Failed to generate image: {str(e)}"
+        }
 
 def launch_image_gen_app():
     st.title("AI Image Generator and Editor")
@@ -99,11 +165,9 @@ def launch_image_gen_app():
 
     with tab1:
         st.header("Generate Image")
-        st.write("Enter a description below, and AI will generate an image for you!")
+        st.write("Enter a description below, and AI will generate an image for you! (Add 'use DALL-E' in your prompt to use DALL-E)")
 
         try:
-            model_name = st.selectbox("Select AI Model:", ["DALL-E", "FLUX.1-Schnell"])
-            
             max_prompt_length = 1000
             user_prompt = st.text_area("Enter your image description:", "")
             if len(user_prompt) > max_prompt_length:
@@ -117,17 +181,17 @@ def launch_image_gen_app():
                     st.warning("Please enter a valid description.")
                 else:
                     with st.spinner("Generating image..."):
-                        result = generate_image(user_prompt, image_size) if model_name == "DALL-E" else generate_image_flux(user_prompt, image_size)
+                        use_dalle = "use dall-e" in user_prompt.lower()
+                        result = _run(user_prompt)  # Use _run instead of direct generation
                         
-                        if isinstance(result, (str, bytes, io.BytesIO)):
-                            if isinstance(result, str) and result.startswith("http"):
-                                st.image(result, caption=f"Generated by {model_name}", use_container_width=True)
-                            elif isinstance(result, (bytes, io.BytesIO)):
-                                st.image(result, caption=f"Generated by {model_name}", use_container_width=True)
-                            else:
-                                st.error(result)
+                        if result["success"]:
+                            if "url" in result:  # DALL-E result
+                                st.image(result["url"], caption="Generated by DALL-E", use_container_width=True)
+                            elif "url" in result:  # FLUX result
+                                st.image(result["url"], caption="Generated by FLUX.1-Schnell", use_container_width=True)
+                            st.success(result["content"])
                         else:
-                            st.error("Unexpected response format from the API")
+                            st.error(result["content"])
         except Exception as e:
             st.error(f"An unexpected error occurred: {str(e)}")
 

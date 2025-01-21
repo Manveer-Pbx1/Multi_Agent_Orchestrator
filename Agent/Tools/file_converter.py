@@ -12,6 +12,10 @@ import io
 import subprocess
 import easyocr
 import moviepy.video.io.VideoFileClip as VideoClip
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)  # Add this line to configure logging
 
 def convert_pdf_to_docx(pdf_bytes):
     """Modified to work with in-memory files"""
@@ -147,6 +151,18 @@ def get_video_codec(format):
     }
     return codec_map.get(format, 'libx264')
 
+def get_video_mime_type(format):
+    """Get the correct MIME type for video formats"""
+    mime_map = {
+        'mp4': 'video/mp4',
+        'avi': 'video/x-msvideo',
+        'mkv': 'video/x-matroska',
+        'mov': 'video/quicktime',
+        'wmv': 'video/x-ms-wmv',
+        'flv': 'video/x-flv'
+    }
+    return mime_map.get(format, 'video/mp4')
+
 def convert_video_bytes(video_bytes, target_format):
     """Convert video bytes to another format"""
     try:
@@ -155,11 +171,10 @@ def convert_video_bytes(video_bytes, target_format):
             input_path = vid_temp.name
             
         output_path = os.path.splitext(input_path)[0] + f'.{target_format}'
-        
         codec = get_video_codec(target_format)
         
         video = VideoClip.VideoFileClip(input_path)
-        video.write_videofile(output_path, codec=codec)
+        video.write_videofile(output_path, codec=codec, audio_codec='aac')
         video.close()
         
         with open(output_path, 'rb') as f:
@@ -168,6 +183,10 @@ def convert_video_bytes(video_bytes, target_format):
         return converted_bytes
     
     finally:
+        try:
+            video.close()
+        except:
+            pass
         try:
             os.unlink(input_path)
             os.unlink(output_path)
@@ -190,12 +209,19 @@ def convert_file(file_bytes, input_format, target_format):
     try:
         if len(file_bytes) == 0:
             raise ValueError("Empty file provided")
+        
+        # Ensure formats are lowercase
+        input_format = input_format.lower()
+        target_format = target_format.lower()
+
+        logger.debug(f"Converting from {input_format} to {target_format}")
 
         # Video conversions
         if input_format in ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv']:
             if target_format in ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv']:
                 converted_bytes = convert_video_bytes(file_bytes, target_format)
-                mime_type = f"video/{target_format}"
+                mime_type = get_video_mime_type(target_format)
+                logger.debug(f"Video conversion complete. MIME type: {mime_type}")
             else:
                 raise ValueError(f"Unsupported video target format: {target_format}")
 
@@ -232,7 +258,9 @@ def convert_file(file_bytes, input_format, target_format):
         if not converted_bytes:
             raise ValueError("Conversion failed: No output generated")
 
+        logger.debug(f"Conversion successful: {mime_type}")
         return converted_bytes, mime_type
 
     except Exception as e:
+        logger.error(f"Conversion error: {str(e)}")
         raise Exception(f"Conversion error: {str(e)}")

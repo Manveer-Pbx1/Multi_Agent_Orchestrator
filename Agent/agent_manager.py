@@ -22,7 +22,7 @@ class AgentManager:
             agents = self.get_agents()  # This now safely handles empty files
             
             # Check for duplicate agents
-            if not any(agent['name'] == agent_details['name'] for agent in agents):
+            if not any(agent['name'].lower() == agent_details['name'].lower() for agent in agents):
                 agents.append(agent_details)
                 with open(self.agents_file, 'w') as f:
                     json.dump(agents, f, indent=2)
